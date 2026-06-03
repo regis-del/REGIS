@@ -1,0 +1,462 @@
+#include "esp_camera.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+// ================= WIFI =================
+
+const char* ssid = "Rayon sport";
+const char* password = "fab12345";
+
+String servername =
+"http://10.5.78.205/study/upload.php";
+
+// ================= PINS =================
+
+// ESP32-CAM Pins
+
+#define buzzer 4
+#define trig 12
+#define echo 13
+
+// ================= CAMERA PINS =================
+
+#define PWDN_GPIO_NUM     32
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM      0
+
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     27
+
+#define Y9_GPIO_NUM       35
+#define Y8_GPIO_NUM       34
+#define Y7_GPIO_NUM       39
+#define Y6_GPIO_NUM       36
+#define Y5_GPIO_NUM       21
+#define Y4_GPIO_NUM       19
+#define Y3_GPIO_NUM       18
+#define Y2_GPIO_NUM        5
+
+#define VSYNC_GPIO_NUM    25
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     22
+
+float distance;
+long duration;
+
+bool alreadyDetected = false;
+
+// ======================================
+
+void setup()
+{
+  Serial.begin(115200);
+
+  pinMode(trig, OUTPUT);
+  pinMode(echo, INPUT);
+  pinMode(buzzer, OUTPUT);
+
+  digitalWrite(buzzer, LOW);
+
+  // WiFi
+
+  WiFi.begin(ssid, password);
+
+  Serial.println("Connecting to WiFi...");
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi Connected");
+  Serial.println(WiFi.localIP());
+
+  // Camera Setup
+
+  camera_config_t config;
+
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+
+  config.pin_sscb_sda = SIOD_GPIO_NUM;
+  config.pin_sscb_scl = SIOC_GPIO_NUM;
+
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+
+  config.xclk_freq_hz = 20000000;
+
+  config.pixel_format = PIXFORMAT_JPEG;
+
+  if(psramFound())
+  {
+    config.frame_size = FRAMESIZE_VGA;
+    config.jpeg_quality = 10;
+    config.fb_count = 2;
+  }
+  else
+  {
+    config.frame_size = FRAMESIZE_QVGA;
+    config.jpeg_quality = 12;
+    config.fb_count = 1;
+  }
+
+  esp_err_t err = esp_camera_init(&config);
+
+  if(err != ESP_OK)
+  {
+    Serial.printf("Camera Error 0x%x\n", err);
+
+    while(true)
+    {
+      delay(1000);
+    }
+  }
+
+  Serial.println("Camera Ready");
+}
+
+// ======================================
+
+void loop()
+{
+  digitalWrite(trig, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(trig, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(trig, LOW);
+
+  duration = pulseIn(echo, HIGH, 30000);
+
+  distance = duration * 0.034 / 2;
+
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  if(distance <= 400 && distance > 0)
+  {
+    digitalWrite(buzzer, HIGH);
+
+    if(!alreadyDetected)
+    {
+      alreadyDetected = true;
+
+      Serial.println("INTRUSION DETECTED");
+
+      sendImage(distance);
+    }
+  }
+  else
+  {
+    digitalWrite(buzzer, LOW);
+    alreadyDetected = false;
+  }
+
+  delay(1000);
+}
+
+// ======================================
+
+void sendImage(float distanceValue)
+{
+  if(WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("WiFi Disconnected");
+    return;
+  }
+
+  camera_fb_t *fb = esp_camera_fb_get();
+
+  if(!fb)
+  {
+    Serial.println("Camera Capture Failed");
+    return;
+  }
+
+  HTTPClient http;
+
+  http.begin(servername);
+
+  http.addHeader(
+      "Content-Type",
+      "application/octet-stream");
+
+  http.addHeader(
+      "Distance",
+      String(distanceValue));
+
+  int responseCode =
+      http.POST(fb->buf, fb->len);
+
+  Serial.print("HTTP Response: ");
+  Serial.println(responseCode);
+
+  http.end();
+
+  esp_camera_fb_return(fb);
+}
+==============================================================================================================
+
+CREATE DATABASE SecurityDB;
+
+USE SecurityDB;
+
+CREATE TABLE IntrusionEvents (
+    ID INT AUTO_INCREMENT PRIMARY KEY,
+    ImagePath VARCHAR(255) NOT NULL,
+    DistanceDetected FLOAT NOT NULL,
+    EventStatus VARCHAR(50) NOT NULL,
+    Timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+==============================================================================================================
+<?php
+
+$conn = new mysqli(
+    "localhost",
+    "root",
+    "",
+    "SecurityDB"
+);
+
+if ($conn->connect_error) {
+    die("Database connection failed");
+}
+
+// Read distance sent by ESP32
+
+$distance = isset($_SERVER['HTTP_DISTANCE'])
+    ? floatval($_SERVER['HTTP_DISTANCE'])
+    : 0;
+
+// Generate image name
+
+$imageName = "img_" . time() . ".jpg";
+
+$imagePath = "images/" . $imageName;
+
+// Get image bytes
+
+$imageData = file_get_contents("php://input");
+
+if (!$imageData) {
+    die("No image received");
+}
+
+// Save image
+
+file_put_contents($imagePath, $imageData);
+
+// Status
+
+$status = "INTRUSION DETECTED";
+
+// Insert record
+
+$stmt = $conn->prepare(
+"INSERT INTO IntrusionEvents
+(ImagePath, DistanceDetected, EventStatus)
+VALUES (?, ?, ?)"
+);
+
+$stmt->bind_param(
+"sds",
+$imagePath,
+$distance,
+$status
+);
+
+$stmt->execute();
+
+echo "SUCCESS";
+
+$stmt->close();
+$conn->close();
+
+?>
+
+==============================================================================================================
+<?php
+
+$conn = new mysqli(
+    "localhost",
+    "root",
+    "",
+    "SecurityDB"
+);
+
+$result =
+$conn->query(
+"SELECT * FROM IntrusionEvents
+ORDER BY ID DESC"
+);
+
+?>
+
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>Security Monitoring Dashboard</title>
+
+<style>
+
+body{
+    font-family: Arial;
+    background:#f4f4f4;
+    margin:0;
+    padding:20px;
+}
+
+.header{
+    background:#003366;
+    color:white;
+    padding:20px;
+    text-align:center;
+    border-radius:10px;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    background:white;
+    margin-top:20px;
+}
+
+th{
+    background:#003366;
+    color:white;
+    padding:12px;
+}
+
+td{
+    padding:10px;
+    border:1px solid #ddd;
+    text-align:center;
+}
+
+img{
+    width:150px;
+    border-radius:5px;
+}
+
+.status{
+    color:red;
+    font-weight:bold;
+}
+
+.card{
+    background:white;
+    padding:20px;
+    border-radius:10px;
+    margin-top:20px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">
+<h1>Restricted Area Security Dashboard</h1>
+<p>Umucho Logistics & Warehousing Ltd</p>
+</div>
+
+<div class="card">
+
+<table>
+
+<tr>
+<th>ID</th>
+<th>Captured Image</th>
+<th>Distance (cm)</th>
+<th>Status</th>
+<th>Timestamp</th>
+</tr>
+
+<?php
+
+if($result->num_rows > 0)
+{
+    while($row = $result->fetch_assoc())
+    {
+        echo "<tr>";
+
+        echo "<td>".$row['ID']."</td>";
+
+        echo "<td>
+        <img src='".$row['ImagePath']."'>
+        </td>";
+
+        echo "<td>".
+        $row['DistanceDetected'].
+        "</td>";
+
+        echo "<td class='status'>".
+        $row['EventStatus'].
+        "</td>";
+
+        echo "<td>".
+        $row['Timestamp'].
+        "</td>";
+
+        echo "</tr>";
+    }
+}
+else
+{
+    echo "<tr>
+    <td colspan='5'>
+    No Intrusion Events Recorded
+    </td>
+    </tr>";
+}
+
+?>
+
+</table>
+
+</div>
+
+</body>
+
+</html>
+==============================================================================================================
+Object ≤ 400 cm
+        ↓
+ESP32-CAM detects
+        ↓
+Buzzer ON
+        ↓
+Photo captured
+        ↓
+Photo sent to upload.php
+        ↓
+Image saved in images/
+        ↓
+Record stored in SecurityDB
+        ↓
+Dashboard displays event
+
