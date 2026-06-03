@@ -4,86 +4,77 @@ include 'db.php';
 
 <!DOCTYPE html>
 <html>
-
 <head>
-
-    <title>IoT Ultrasonic Sensor</title>
+    <title>DHT Monitoring System</title>
 
     <style>
 
         body{
             font-family: Arial;
-            background:#f4f4f4;
-            padding:20px;
+            background:#f2f2f2;
+            text-align:center;
         }
 
         table{
-            width:100%;
+            width:80%;
+            margin:auto;
             border-collapse:collapse;
             background:white;
         }
 
-        table, th, td{
+        th,td{
             border:1px solid black;
-        }
-
-        th, td{
             padding:10px;
-            text-align:center;
         }
 
         th{
-            background:#333;
+            background:green;
             color:white;
         }
 
-        h2{
-            text-align:center;
+        h1{
+            color:#333;
         }
 
     </style>
 
 </head>
-
 <body>
 
-<h2>Ultrasonic Sensor Monitoring System</h2>
+<h1>IoT Temperature and Humidity Monitoring</h1>
 
 <table>
 
 <tr>
     <th>ID</th>
-    <th>Distance (cm)</th>
-    <th>Date & Time</th>
+    <th>Temperature °C</th>
+    <th>Humidity %</th>
+    <th>Date Time</th>
 </tr>
 
 <?php
 
 $sql = "SELECT * FROM sensor_data ORDER BY id DESC";
+$result = $conn->query($sql);
 
-$result = mysqli_query($conn, $sql);
+if($result->num_rows > 0){
 
-if(mysqli_num_rows($result) > 0){
+    while($row = $result->fetch_assoc()){
 
-    while($row = mysqli_fetch_assoc($result)){
-
-        echo "<tr>";
-
-        echo "<td>".$row['id']."</td>";
-
-        echo "<td>".$row['distance']." cm</td>";
-
-        echo "<td>".$row['created_at']."</td>";
-
-        echo "</tr>";
-
+        echo "<tr>
+                <td>".$row['id']."</td>
+                <td>".$row['temperature']."</td>
+                <td>".$row['humidity']."</td>
+                <td>".$row['created_at']."</td>
+              </tr>";
     }
 
 }else{
 
-    echo "<tr><td colspan='3'>No Data Found</td></tr>";
-
+    echo "<tr><td colspan='4'>No Data</td></tr>";
 }
+
+$conn->close();
 
 ?>
 
